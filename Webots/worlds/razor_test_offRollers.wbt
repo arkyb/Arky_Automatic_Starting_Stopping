@@ -1,0 +1,327 @@
+#VRML_SIM R2022a utf8
+WorldInfo {
+  info [
+    "Pedestrian Simulation"
+  ]
+  title "Autonomous Razor"
+  CFM 0.0001
+  ERP 0.6
+  basicTimeStep 5
+  lineScale 1
+  contactProperties [
+    ContactProperties {
+      bounce 0
+      softCFM 0.0003
+    }
+    ContactProperties {
+      material1 "motorcycle_wheel"
+      bounce 0
+      bounceVelocity 0
+      softCFM 0.01
+    }
+  ]
+}
+Viewpoint {
+  orientation -0.11394924032791368 -0.24644332663340535 0.9624350665819237 5.66537062933525
+  position -3.648691408994433 2.9682598532832465 1.3577734041843434
+  near 1
+  follow "motorcycle"
+}
+TexturedBackground {
+}
+TexturedBackgroundLight {
+}
+DEF circle_arena CircleArena {
+  rotation 1 0 0 0
+  radius 500
+  floorTileSize 2 2
+  wallThickness 0.1
+  wallHeight 1
+  wallAppearance OldPlywood {
+  }
+}
+Robot {
+  translation 2 0 2
+  name "mc_supervisor"
+  controller "MC_Supervisor"
+  supervisor TRUE
+}
+DEF MOTORCYCLE Robot {
+  translation 0.518196 0.02 0.160432
+  rotation 0 1 0 -0.02
+  children [
+    Display {
+      name "torque_display"
+      width 512
+      height 384
+    }
+    Display {
+      name "roll_display"
+      width 512
+      height 384
+    }
+    InertialUnit {
+      name "imu"
+    }
+    GPS {
+    }
+    Gyro {
+    }
+    DEF body Solid {
+      rotation 0 0 -1 1.5707996938995747
+      children [
+        DEF rearMotor Solid {
+          translation -7.34642e-08 -0.28 0.062
+          rotation 0 1 0 1.5708
+          children [
+            DEF rearMotor Shape {
+              appearance PBRAppearance {
+                baseColor 0 0 0
+              }
+              geometry Cylinder {
+                height 0.0815
+                radius 0.05
+              }
+            }
+          ]
+          name "solid(1)"
+          boundingObject USE rearMotor
+          physics Physics {
+            density -1
+            mass 1.94
+          }
+        }
+        DEF Battery Solid {
+          translation 0 -0.1 0.073
+          children [
+            DEF battery Shape {
+              appearance PBRAppearance {
+                baseColor 0.1 0.1 0.1
+                metalness 0.2
+              }
+              geometry Box {
+                size 0.125 0.15 0.105
+              }
+            }
+          ]
+          boundingObject USE battery
+          physics Physics {
+            mass 4.083
+          }
+        }
+        DEF rearFrame Shape {
+          appearance PBRAppearance {
+            baseColor 0.5 0.5 0.5
+            metalness 0
+          }
+          geometry Mesh {
+            url [
+              "meshes/updated_rear_frame.stl"
+            ]
+          }
+        }
+      ]
+      name "solid(1)"
+      boundingObject USE rearFrame
+      physics Physics {
+        mass 5.046
+      }
+    }
+    DEF steer_axis HingeJoint {
+      jointParameters DEF steer_joint HingeJointParameters {
+        axis -0.41 0 1
+        anchor 0.2067 0 0
+        minStop -0.5
+        maxStop 0.5
+        dampingConstant 0.0017
+      }
+      device [
+        DEF steer_angle PositionSensor {
+          name "steer_angle"
+        }
+        DEF steering_motor RotationalMotor {
+          name "steering_motor"
+          controlPID 0.0001 0 0
+          maxTorque 10000
+        }
+      ]
+      endPoint DEF miniFork Solid {
+        translation 0.04756787714688673 1.7070133440100221e-06 0.3648526703487325
+        rotation 9.227955276078706e-06 -0.9999999993057851 -3.610089301206145e-05 0.4099819602497638
+        children [
+          Gyro {
+            name "steergyro"
+          }
+          DEF front_wheel_bearing HingeJoint {
+            jointParameters HingeJointParameters {
+              axis 0 1 0
+              anchor 0.037 0 -0.427
+            }
+            device [
+              DEF wheel_front_sensor PositionSensor {
+                name "wheel_front_sensor"
+              }
+            ]
+            endPoint DEF front_wheel_solid Solid {
+              translation 0.03696083382853936 4.475773457243826e-07 -0.42684930124324993
+              rotation 0.999999999997657 -1.881920004230333e-06 1.069740000970158e-06 1.5700053071794935
+              children [
+                DEF frontWheel Shape {
+                  appearance PBRAppearance {
+                    baseColor 0.3 0.3 0.3
+                    metalness 0
+                  }
+                  geometry Mesh {
+                    url [
+                      "meshes/dirtbike_frontwheel.stl"
+                    ]
+                  }
+                }
+              ]
+              name "solid(2)"
+              contactMaterial "motorcycle_wheel"
+              boundingObject DEF tire TorusBoundingObject {
+                majorRadius 0.13875
+                minorRadius 0.02
+                subdivision 1280
+              }
+              physics Physics {
+                mass 1.486
+              }
+            }
+          }
+          DEF miniFork_body Shape {
+            appearance DEF default PBRAppearance {
+              baseColor 0.8 0.8 0.8
+            }
+            geometry Mesh {
+              url [
+                "meshes/minifork.stl"
+              ]
+            }
+          }
+        ]
+        name "miniFork"
+        boundingObject USE miniFork_body
+        physics Physics {
+          density -1
+          mass 2.205
+        }
+      }
+    }
+    DEF rear_axle HingeJoint {
+      jointParameters HingeJointParameters {
+        axis 0 1 0
+        anchor -0.515 0 -0.005
+      }
+      device [
+        DEF rear_wheel_pos PositionSensor {
+          name "rear_wheel_pos_sensor"
+        }
+        DEF drive_motor RotationalMotor {
+          name "drive_motor"
+          controlPID 100000 0 0
+          maxVelocity 1000
+          maxTorque 100
+        }
+        DEF rear_brake Brake {
+          name "rear_brake"
+        }
+      ]
+      endPoint DEF rear_wheel Solid {
+        translation -0.515390090303656 -1.3526471333869868e-07 -0.004612464988909079
+        rotation 0.997521713352735 -0.04973178570910749 0.04977128569775268 1.5732653071795397
+        children [
+          USE frontWheel
+        ]
+        contactMaterial "motorcycle_wheel"
+        boundingObject DEF tire TorusBoundingObject {
+          majorRadius 0.13875
+          minorRadius 0.02
+          subdivision 1280
+        }
+        physics Physics {
+          mass 2.462
+        }
+      }
+    }
+    DEF kickstand_joint HingeJoint {
+      jointParameters HingeJointParameters {
+        position 1.1
+        axis 0 1 0
+        anchor -0.08 0.02 0.02
+        maxStop 1.2
+        dampingConstant 0.1
+      }
+      device [
+        DEF kick_angle PositionSensor {
+          name "kick_angle"
+        }
+        DEF kick_motor RotationalMotor {
+          name "kick_motor"
+          maxVelocity 1000
+          maxPosition 1.2000008103999145
+          maxTorque 3
+        }
+      ]
+      endPoint DEF kickstand Solid {
+        translation -0.15616614582029043 0.08288809999999479 -0.01876613892151548
+        rotation 0.388910854012272 0.8898837865822938 -0.23844327209926386 1.2065727339809527
+        children [
+          Shape {
+            appearance PBRAppearance {
+            }
+            geometry Cylinder {
+              height 0.19
+              radius 0.01
+            }
+          }
+        ]
+        name "kickstand"
+        boundingObject Cylinder {
+          height 0.19
+          radius 0.01
+        }
+        physics Physics {
+        }
+      }
+    }
+    Solid {
+      translation -0.0089112 0 0.417906
+      rotation 0 1 0 -0.46179969389957476
+      children [
+        DEF motor_shape Shape {
+          appearance PBRAppearance {
+          }
+          geometry Cylinder {
+            height 0.1
+            radius 0.04
+          }
+        }
+      ]
+      name "solid(2)"
+      boundingObject USE motor_shape
+      physics Physics {
+        mass 3
+      }
+    }
+  ]
+  name "motorcycle"
+  boundingObject Transform {
+    rotation 0 0 1 -1.5707953071795862
+    children [
+      USE rearFrame
+    ]
+  }
+  physics Physics {
+    mass 1
+    centerOfMass [
+      -0.159 0 0.1029
+    ]
+    inertiaMatrix [
+      0.352 1.327 1.049
+      0 0.14 0
+    ]
+  }
+  controller "Yaw_Controller_ISO"
+}
