@@ -6,7 +6,7 @@ import control
 #set_printoptions(linewidth=200)
 
 ### PHYSICAL PARAMETERS
-m_rider = 0.
+m_rider = 0.0
 h_rider = 0.5
 #overall
 b = 0.767 #wheelbase
@@ -178,12 +178,12 @@ def getStateSpaceForYawControlnoactuator(velocity):
     sys = control.StateSpace(Aaug, Baug, Caug, Daug)
     return sys, Aaug, Baug, Caug, Daug
 
-def getYawDLQRRazornoactuator (velocity,R=0.01,dT=0.005):
+def getLQRRazor (velocity,R=0.01,dT=0.005):
     """
-    sys,Klqr = getYawDLQRRazor(velocity)
+    sys,Klqr = getYawLQRRazor(velocity)
     Using hard-coded weights, design a linear quadratic regulator for motorcycle.
     returns open-loop system (as a control object) and the matrix of LQR gains.
-    This LQR takes desired yaw angle and roll angle as the inputs. No actuator compensation.
+    This LQR takes desired yaw angle and roll angle as the inputs.
     """
     sys,Ass,Bss_control,Css,Dss_control = getStateSpaceForYawControlnoactuator(velocity)
     import control.matlab as cnt
