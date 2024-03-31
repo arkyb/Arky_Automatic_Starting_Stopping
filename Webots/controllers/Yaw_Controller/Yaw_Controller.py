@@ -3,13 +3,22 @@ from numpy import *
 from Rollover import Rollover
 from DelaySim import DelaySim
 from LCAD import LCAD
-from generateDLQRvalsYawnoactuator import generateDLQRvalsYawnoactuator
+from generateLQRvals import generateLQRvals
 import time
 import math
 import datetime
 
 now = datetime.datetime.now()
 fname = 'Data/'+str(now.year)+'_'+str(now.month)+'_'+str(now.day)+'_'+str(now.hour)+'_'+str(now.minute)+'_'+str(now.second)+'.txt'
+dtxt = open('delay.txt')
+delayTime = float(dtxt.read())
+ktxt = open('ksum.txt')
+ksum = float(ktxt.read())
+recordData = True
+if recordData:
+    #start a file we can use to collect data
+    f = open(fname,'w')
+    f.write("#time, goalRoll, Torque, speed, roll, steer, rollrate, steerrate, intE, fsmstate, kickangle, Tdelayed\r\n")
 
 class Timer:
     def __init__(self,preset):
@@ -31,96 +40,34 @@ class Timer:
             self.elapsed=0
             self.state=False
 
-# create the Robot instance.
+#create the Robot instance.
 robot = Robot()
 yawCorr = Rollover()
 
-# get the time step of the current world.
+#get the time step of the current world.
 timestep = int(robot.getBasicTimeStep())
 
-# CONTROL PARAMETERS
+#CONTROL PARAMETERS
 lastControlTime = 0
 dTcontrol = 0.005
-delayTime = 0.005 #seconds. 100ms is a LOT, real delay will be less
-dtxt = open('delay.txt')
-delayTime = float(dtxt.read())
-ktxt = open('ksum.txt')
-ksum = float(ktxt.read())
-#OVERRIDE DELAY AND GAIN
-ksum = 0.3
-delayTime = 0.08
+delayTime = 0.005
 
-
-#print('Delay='+str(delayTime))
-generator = generateDLQRvalsYawnoactuator(dTcontrol)
+#get LQR gains
+generator = generateLQRvals(dTcontrol)
 gainmtx=generator.update()
-#gainmtx = loadtxt('razorGains_dlqr_yaw.txt')
-
 lqrspeeds = gainmtx[:,0]
 lqrgains = gainmtx[:,1:]
+
+Ndelay = int(delayTime/(dTcontrol)) #length of delay queue
+tDelay = DelaySim(Ndelay) #create DelaySim object
+
+lcad = LCAD() #create an LCAD object
+
+#SIMULATION SETUP
+driveVelocity = 3.0
+stopRollVal = -0.05
 T = 0
 fricComp = 0
-#time by which actual torque is delayed
-#create a FIFO delay of .05 seconds (10 timesteps) to simulate torque delay
-Ndelay = int(delayTime/(dTcontrol))
-#print("Delay N: "+str(Ndelay))
-tDelay = DelaySim(Ndelay)
-
-#create an LCAD object
-lcad = LCAD()
-
-# SIMULATION SETUP
-driveVelocity = 3.0
-stepRollVal = 0
-stopRollVal = -0.05 #determined to be a pretty good step value
-stepTime = 1
-impulseDone = False
-impulseTorque = 0
-impulseTime = 3
-
-# STATE VARIABLES
-driving = True
-stopping = False
-stopped = False
-sup = False
-
-# TIMERS
-driveTimer = Timer(5000) #how long to drive before stopping
-stopTimer = Timer(1000) #how long the stop sequence takes
-stoppedTimer = Timer(2000) #how long to stop before swimg-up
-supTimer = Timer(500)
-
-recordData = True
-
-if recordData:
-    # start a file we can use to collect data
-    f = open(fname,'w')
-    f.write("# time, goalRoll, Torque, speed, roll, steer, rollrate, steerrate, intE, fsmstate, kickangle, Tdelayed\r\n")
-
-#print('Ksum='+str(ksum))
-
-# You should insert a getDevice-like function in order to get the
-# instance of a device of the robot. Something like:
-motor = robot.getDevice('drive_motor')
-steer = robot.getDevice('steering_motor')
-kick = robot.getDevice('kick_motor')
-    
-motor.setPosition(float('inf'))
-
-imu = robot.getDevice('imu')
-imu.enable(timestep)
-gps = robot.getDevice('gps')
-gps.enable(timestep)
-gyro = robot.getDevice('gyro')
-gyro.enable(timestep)
-steergyro = robot.getDevice('steergyro')
-steergyro.enable(timestep)
-
-steersensor = robot.getDevice('steer_angle')
-steersensor.enable(timestep)
-kicksensor = robot.getDevice('kick_angle')
-kicksensor.enable(timestep)
-
 simtime = 0.0
 yawRate = 0
 oldYaw = 0
@@ -133,6 +80,34 @@ steerRate = 0
 rollMax = 0
 rollRateMax = 0
 
+#STATE VARIABLES
+driving = True
+stopping = False
+stopped = False
+sup = False
+
+#TIMERS
+driveTimer = Timer(5000)
+stopTimer = Timer(1000)
+stoppedTimer = Timer(2000) 
+supTimer = Timer(500)
+
+motor = robot.getDevice('drive_motor')
+steer = robot.getDevice('steering_motor')
+kick = robot.getDevice('kick_motor')
+motor.setPosition(float('inf'))
+imu = robot.getDevice('imu')
+imu.enable(timestep)
+gps = robot.getDevice('gps')
+gps.enable(timestep)
+gyro = robot.getDevice('gyro')
+gyro.enable(timestep)
+steergyro = robot.getDevice('steergyro')
+steergyro.enable(timestep)
+steersensor = robot.getDevice('steer_angle')
+steersensor.enable(timestep)
+kicksensor = robot.getDevice('kick_angle')
+kicksensor.enable(timestep)
 
 oldRoll,oldPitch,oldYaw = imu.getRollPitchYaw()
 
@@ -173,8 +148,8 @@ def getCurrentGains(speed):
     Klqr = lqrgains[idx,:]
     return Klqr
 
-# Main loop:
-# - perform simulation steps until Webots is stopping the controller
+#Main loop:
+#- perform simulation steps until Webots is stopping the controller
 while robot.step(timestep) != -1:
     simtime+=timestep/1000.0
     if(firstLoop):
@@ -182,43 +157,38 @@ while robot.step(timestep) != -1:
         oldYaw = yawCorr.update(oldYaw)
         oldsteer = steersensor.getValue()
         firstLoop=False
-    # BLOCK 1
-    # Set timer states
+    #BLOCK 1
+    #FSM SETUP
+    #Set timer states
     driveTimer.update(driving,timestep)
-    stopTimer.update(stopping,timestep) 
+    stopTimer.update(stopping,timestep)
     stoppedTimer.update(stopped,timestep)
     supTimer.update(sup,timestep)
-    # Read the sensors:
-    # Enter here functions to read sensor data, like:
-    #  val = ds.getValue()
+    #Read the sensors:
     #get current fwd speed
     U = gps.getSpeed();
     #get IMU values and process to get yaw, roll rates
     #read IMU value
     rpy = imu.getRollPitchYaw()
     gyros = gyro.getValues()
-    #rollInt += (timestep/1000.0)*rpy[0]
     yaw = rpy[2]
     yaw = yawCorr.update(yaw)
-    yawRate = gyros[2]#(yaw-oldYaw)/(timestep/1000.0)
-    # print("yaw/old: "+str(yaw)+","+str(oldYaw))
+    yawRate = gyros[2]
     oldYaw = yaw
     roll = rpy[0]
-    rollRate = gyros[0]#(roll-oldRoll)/(timestep/1000.0)
-    rollRate_bad = (roll-oldRoll)/(timestep/1000.0)
+    rollRate = gyros[0]
     oldRoll = roll
     #get kickstand angle
     kickangle = kicksensor.getValue()
-
     #now get steer values and calculate steer rate.
-    # WEBOTS is in ISO (z up) but Papa is in SAE (z down) so need to flip dir.
+    #WEBOTS is in ISO (z up) but Papa is in SAE (z down) so need to flip dir.
     steerangle = steersensor.getValue()
     steergyros = steergyro.getValues()
-    steerRate = steergyros[2]#(steerangle-oldsteer)/(timestep/1000.0)
-    steerRate_bad = (steerangle-oldsteer)/(timestep/1000.0)
+    steerRate = steergyros[2]
     oldsteer = steerangle
 
-    # BLOCK 2
+    #BLOCK 2
+    #SET TRANSITION BEHAVIOR
     if(rollMax>0.01):
         T1 = driving and not (driveTimer.state and rollRate<=0.5*rollRateMax and roll>=0.5*rollMax)
         T2 = driving and driveTimer.state and rollRate<=0.5*rollRateMax and roll>=0.5*rollMax
@@ -231,113 +201,74 @@ while robot.step(timestep) != -1:
     T6 = stopped and stoppedTimer.state
     T7 = sup and not roll>= 0
     T8 = sup and roll>=0
-    # BLOCK 3
+    #BLOCK 3
+    #SET THE STATES
     driving = T1 or T8
     stopping = T2 or T3
     stopped = T4 or T5
     sup = T6 or T7
-    
-    # BLOCK 4
 
-    # Enter here functions to send actuator commands, like:
-    
-
-    #print("goalYawRate/yawRate: "+str(goalYawRate)+","+str(yawRate))
-
-    # eYawRate = (goalYawRate - yawRate);
-    # inteYawRate +=(timestep/1000.0)*eYawRate;
-    # #set roll angle based on yaw rate.
-    # #ay = U * yawRate
-
-    #print("speed, accel (g): "+str(U)+","+str(U*yawRate/9.81))
-    # goalRoll = -arctan(U*goalYawRate/9.81)#eYawRate*-.1 - 1*inteYawRate
-    # if(simtime>stepTime):
-    #     goalRoll = stepRollVal #set an arb number for now, to compare with papadop
-    # else:
-    #     goalRoll = 0
-    # SET THE STATE BEHAVIOR
+    #BLOCK 4
+    #SET THE STATE BEHAVIOR
     if(driving):
         state = "driving"
-        #print(rollMax)
         goalYaw = 0
         goalRoll=0
         motor.setVelocity(driveOmega)
         kick.setPosition(1.2)
-        if(driveTimer.elapsed>2000): #this was 3500
+        if(driveTimer.elapsed>2000):
             rollMax,rollRateMax = lcad.update(roll,rollRate)
 
     elif(stopping):
-        rollMax = 0 #reset these values
-        rollRateMax = 0 #reset these values
+        rollMax = 0
+        rollRateMax = 0
         state = "stopping"
-        #linearly decrease speed to 0 over duration of stopTimer
         motor.setVelocity(clamp(driveOmega - (1.1*swingDownAcc*stopTimer.elapsed/stopTimer.preset),0,driveOmega))
-        #move kickstand down within half of the stopTimer duration
         kick.setPosition(1.2-clamp((stopTimer.elapsed*1.2/(500)),0,1.2))
         if(stopTimer.elapsed<0.4*stopTimer.preset):
-            goalRoll = 0 #while slowing down, stay upright
-            goalRollRate=-0.05 #but also start leaning to the left 
+            goalRoll = 0
+            goalRollRate=-0.05
         else:
-            goalRoll = stopRollVal #now really lean
+            goalRoll = stopRollVal
     elif(stopped):
         state = "stopped"
         motor.setVelocity(0)
         if(stoppedTimer.elapsed>stoppedTimer.preset*0.5):
-            steer.setTorque(-1) #move steering all the way left #move steering angle to -0.17
-            goalRoll = -0.12 #this is stopped angle more or less
+            goalRoll = -0.12
         else:
             goalRoll = stopRollVal
     elif(sup):
-        goalRoll = 0.1 #swing command to get bike upright
-        #swing the kickstand up
+        goalRoll = 0.1
         kick.setPosition(clamp(3*1.2*(supTimer.elapsed)/supTimer.preset,0,1.2))
-        #ramp the motor up
         motor.setVelocity(clamp(swingUpAcc*supTimer.elapsed/supTimer.preset,0,driveOmega))
         state = "swingup"
-    #print(state)
-    #goalRoll = 0.05
-    if(1==1):
-        eYaw = goalYaw - yaw
-        eRoll = goalRoll - roll
-        #if(not (stopped or stopping)): #prevents error accumulation during stopped state
-        rollInt = rollInt + eRoll*(dTcontrol) 
-        #LQR gains from papadop:
-        Klqr = getCurrentGains(driveVelocity)
-        #Klqr = array([-9.54924635, 12.44287136, -1.02011267,  1.06339454, 10.        ])
-        #below are gains for ballast of 30kg 0.5m up
 
-        T = Klqr[4]*eYaw + Klqr[0]*(eRoll) - Klqr[1]*steerangle - Klqr[2]*rollRate - Klqr[3]*steerRate
-        #print("rate = "+str(rollRate)+", bad: "+str(rollRate_bad))
+    eYaw = goalYaw - yaw
+    eRoll = goalRoll - roll
+    rollInt = rollInt + eRoll*(dTcontrol)
+    Klqr = getCurrentGains(driveVelocity)
 
-        if(T<0):
-            T-=fricComp
-        elif(T>0):
-            T+=fricComp
+    T = Klqr[4]*eYaw + Klqr[0]*(eRoll) - Klqr[1]*steerangle - Klqr[2]*rollRate - Klqr[3]*steerRate
 
-        Tdelayed = tDelay.update(T)
+    if(T<0):
+        T-=fricComp
+    elif(T>0):
+        T+=fricComp
 
-        Tfinal = Tdelayed
-    
-        Tlim = 1.5916
-        if(Tfinal>Tlim):
-            Tfinal = Tlim
-        elif(T<-Tlim):
-            Tfinal = -Tlim
+    Tdelayed = tDelay.update(T)
 
-        ## IF we are at impulseTime, add impulse
-        if(simtime>impulseTime and not impulseDone):
-            Tfinal +=impulseTorque
-            impulseDone = True
+    Tfinal = Tdelayed
 
-        #scale Tfinal by Ksum
-        Tfinal = Tfinal*ksum
-        
-        #print("Time: "+str(simtime)+", Torque: "+str(T))
-        steer.setControlPID(0.0001,0,0)
-        #steer.setPosition(float('inf'))
-        # WEBOTS is in ISO (z up) but Papa is in SAE (z down) so need to flip dir.
-        steer.setTorque(Tfinal)
-        lastControlTime = simtime
+    Tlim = 1.5916
+    if(Tfinal>Tlim):
+        Tfinal = Tlim
+    elif(T<-Tlim):
+        Tfinal = -Tlim
+
+    Tfinal = Tfinal*ksum
+
+    steer.setControlPID(0.0001,0,0)
+    steer.setTorque(Tfinal)
+    lastControlTime = simtime
     if(recordData):
         f.write(str(simtime)+","+str(goalRoll)+","+str(T)+","+str(U)+","+str(roll)+","+str(steerangle)+","+str(rollRate)+","+str(steerRate)+","+str(rollInt)+","+str(state)+","+str(kickangle)+","+str(Tdelayed)+"\r\n")
-# Enter here exit cleanup code.

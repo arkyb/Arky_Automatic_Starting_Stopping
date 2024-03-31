@@ -7,7 +7,7 @@ class generateLQRvals:
     def update(self):
         vels = arange(1,7,0.5)
         for k in range(0,len(vels)):
-            sys,Klqr = getYawLQRRazor(vels[k],0.01,self.dT)
+            sys,Klqr = getLQRRazor(vels[k],0.01,self.dT)
             allGains = ravel(Klqr)
             if(k==0):
                 gainmtx = hstack((vels[k],allGains))

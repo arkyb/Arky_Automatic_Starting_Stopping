@@ -3,18 +3,20 @@ from matplotlib.pyplot import *
 from scipy import signal
 import control
 
-### PHYSICAL PARAMETERS
+###PHYSICAL PARAMETERS
+#rider parameters
 m_rider = 0.0
 h_rider = 0.5
+
 #overall
 b = 0.767 #wheelbase
 c = 0.02285999 #trail
-alph = 1.16 # rake measured from forward
+alph = 1.16 #rake: measured from forward x
 g = 9.81 #gravity
-v = 3 # forward speed
+v = 3 #forward speed
 
 #rear wheel
-Rrw = 0.15875 # radius of real wheel
+Rrw = 0.15875 #radius of real wheel
 mrw = 2.462 #mass of rear wheel
 Axx = 0.027708579 #moment of inertia of rear wheel about x
 Ayy = 0.033968214 #moment of inertia of rear wheel about y
@@ -49,7 +51,6 @@ mfw = 1.486
 Dxx,Dyy,Dzz = 0.016724187,0.020502342,0.016724187
 
 #intermediate terms
-
 #total
 mt = mrw+mrf+mff+mfw #total mass
 xt = (xrf*mrf+xff*mff+b*mfw)/mt #CG location x
@@ -70,6 +71,7 @@ Fzz = Czz+Dzz+mff*(xff-xf)**2 + mfw*(b-xf)**2
 lam = pi/2 - alph #angle of steering axis with global z in the vertical plane
 u = (xf-b-c)*cos(lam)+hf*sin(lam) #perp distance that CM of front is ahead of steering axis
 Fll = mf*u**2+Fxx*sin(lam)**2-2*Fxz*sin(lam)*cos(lam)+Fzz*cos(lam)**2
+
 Flx = -(-mf*u*hf - Fxx*sin(lam) + Fxz*cos(lam))
 Flz = -(mf*u*xf - Fxz*sin(lam)+Fzz*cos(lam))
 
@@ -91,7 +93,7 @@ K = K0+K1*v**2
 D1 = array([[0,-(f*St+Sf*cos(lam)+Txz*cos(lam)/b+f*mt*ht)],[f*St+Sf*cos(lam),-Flz*cos(lam)/b+f*(Su+Tzz*cos(lam)/b)]])
 D = v*D1
 
-######### CONTROLLER DESIGN ########
+#########CONTROLLER DESIGN ########
 
 def getStateSpaceForControl(v):
     """ sys, A,B,C,D = getStateSpaceForControl(velocity)
@@ -99,14 +101,14 @@ def getStateSpaceForControl(v):
         States are x = [roll steer roll_rate steer_rate]'
     """
     #MDK form:
-    M = array([[Txx,(Flx+f*Txz)],[(Flx+f*Txz), Fll+2*f*Flz+f**2*Tzz]])
+    M = array([[Txx,-(Flx+f*Txz)],[-(Flx+f*Txz), Fll-2*f*Flz+f**2*Tzz]])
     K0 = array([[-g*mt*ht,g*Su],[g*Su,-g*Su*sin(lam)]])
     K1 = array([[0,-(St+mt*ht)*cos(lam)/b],[0,(Su+Sf*sin(lam))*cos(lam)/b]])
     K = K0+K1*v**2
-    D1 = array([[0,-(f*St+Sf*cos(lam)-Txz*cos(lam)/b+f*mt*ht)],[f*St+Sf*cos(lam),Flz*cos(lam)/b+f*(Su+Tzz*cos(lam)/b)]])
+    D1 = array([[0,-(f*St+Sf*cos(lam)+Txz*cos(lam)/b+f*mt*ht)],[f*St+Sf*cos(lam),-Flz*cos(lam)/b+f*(Su+Tzz*cos(lam)/b)]])
     D = v*D1
 
-    #### States are [roll steer rollrate steerrate]' by default
+    ####States are [roll steer rollrate steerrate]' by default
     Ass = hstack((zeros((2,2)),eye(2,2)))
     Ass = vstack((Ass,hstack((dot(-linalg.inv(M),K),dot(-linalg.inv(M),D)))))
     Bss = vstack((zeros((2,2)),dot(linalg.inv(M),eye(2))))
@@ -118,15 +120,14 @@ def getStateSpaceForControl(v):
     sys = control.StateSpace(Ass,Bss1,Css,Dss_control)
     return sys,Ass,Bss1,Css,Dss_control
 
-
-
 def getStateSpaceForYawControl(velocity):
     """ sys, A,B,C,D = getStateSpaceForYawControl(velocity)
             Creates open-loop state space model for motorcycle.
             States are x = [roll steer roll_rate steer_rate yaw]'
         """
+    #first get the baseline model
     sys,Ass,Bss_control,Css,Dss_control = getStateSpaceForControl(velocity)
-    #augment the original state space with yaw-steer relation
+    #augment with steer-yaw relation
     Aaug = hstack((sys.A, zeros((4, 1))))
     Aaug = vstack((Aaug, zeros((1, 5))))
     Aaug[4,1] = v*sin(alph)/b
@@ -139,13 +140,14 @@ def getStateSpaceForYawControl(velocity):
 
 def getLQRRazor (velocity,R=0.01,dT=0.005):
     """
-    sys,Klqr = getLQRRazor(velocity)
+    sys,Klqr = getYawLQRRazor(velocity)
     Using hard-coded weights, design a linear quadratic regulator for motorcycle.
     returns open-loop system (as a control object) and the matrix of LQR gains.
-    This LQR takes desired yaw angle and roll angle as the inputs.
+    This LQR takes desired yaw angle and roll angle as the inputs. No actuator compensation.
     """
     sys,Ass,Bss_control,Css,Dss_control = getStateSpaceForYawControl(velocity)
     import control.matlab as cnt
+    #set weights on state errors
     Q = eye(5)/100.0
     Q[0,0] = 1.0
     Q[1,1] = 0.0

@@ -265,8 +265,8 @@ DEF MOTORCYCLE Robot {
         }
       ]
       endPoint DEF kickstand Solid {
-        translation -0.15616614582029043 0.08288809999999479 -0.01876613892151548
-        rotation 0.388910854012272 0.8898837865822938 -0.23844327209926386 1.2065727339809527
+        translation -0.15616614582029043 0.08288809999999479 -0.018766138921515473
+        rotation 0.38891085401227193 0.8898837865822938 -0.23844327209926391 1.2065727339809527
         children [
           Shape {
             appearance PBRAppearance {
@@ -323,5 +323,5 @@ DEF MOTORCYCLE Robot {
       0 0.14 0
     ]
   }
-  controller "Yaw_Controller_ISO"
+  controller "Yaw_Controller"
 }

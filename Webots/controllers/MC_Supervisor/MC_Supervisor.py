@@ -8,8 +8,8 @@ import numpy as np
 robot = Supervisor()  # create Supervisor instance
 
 #open Ksum and Delay files, set initial values
-f = open('../Yaw_Controller_ISO/ksum.txt','w')
-g = open('../Yaw_Controller_ISO/delay.txt','w')
+f = open('../Yaw_Controller/ksum.txt','w')
+g = open('../Yaw_Controller/delay.txt','w')
 f.write('1.0')
 g.write('0.005')
 g.close()
